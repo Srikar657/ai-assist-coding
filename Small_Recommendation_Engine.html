@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>💾 Persistent Product Recommender</title>
+    
+    <style>
+        :root {
+            --primary-color: #FF5733;
+            --secondary-color: #33C4FF;
+            --accent-color: #DAF7A6;
+            --background-color: linear-gradient(135deg, #f0f8ff, #e9f5ff);
+            --card-background: #ffffff;
+            --text-color: #333;
+            --shadow-light: 0 6px 15px rgba(0, 0, 0, 0.15);
+            --border-radius-card: 15px;
+            --border-radius-input: 8px;
+        }
+
+        body {
+            font-family: 'Poppins', sans-serif;
+            background: var(--background-color);
+            margin: 0;
+            padding: 30px;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 750px;
+            width: 100%;
+            text-align: center;
+        }
+
+        h1 {
+            color: var(--primary-color);
+            font-size: 2.5em;
+        }
+
+        .data-entry-card, .results-card {
+            background: var(--card-background);
+            padding: 35px;
+            border-radius: var(--border-radius-card);
+            box-shadow: var(--shadow-light);
+            margin-bottom: 25px;
+            border-top: 5px solid var(--secondary-color);
+        }
+
+        .product-input-row {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 15px;
+            align-items: center;
+        }
+
+        input[type="text"], input[type="number"] {
+            padding: 12px;
+            border: 1px solid #ccc;
+            border-radius: var(--border-radius-input);
+        }
+
+        .rating-stars {
+            display: flex;
+            gap: 3px;
+            cursor: pointer;
+        }
+
+        .star {
+            font-size: 24px;
+            color: #ddd;        /* inactive */
+            transition: 0.2s;
+        }
+
+        .star.active {
+            color: gold;        /* active star */
+            text-shadow: 1px 1px 4px rgba(255, 215, 0, 0.6);
+        }
+
+        .remove-btn {
+            background: none;
+            border: 2px solid #f44336;
+            color: #f44336;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            cursor: pointer;
+        }
+
+        .primary-btn {
+            background: var(--primary-color);
+            color: #fff;
+            padding: 12px 20px;
+            border-radius: var(--border-radius-input);
+            border: none;
+            cursor: pointer;
+        }
+
+        #recommendation-output li {
+            background: #fff9e6;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-left: 6px solid var(--primary-color);
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+            font-size: 1.1em;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>✨ Small Recommendation Engine</h1>
+
+    <section class="data-entry-card">
+        <h2>🛒 Product Data Entry</h2>
+        <div id="product-list"></div>
+
+        <button id="add-product-btn" class="primary-btn">+ Add Product</button>
+
+        <div style="margin-top:20px;">
+            <label>Show Top N:</label>
+            <input type="number" id="top-n" value="3" min="1" max="10" style="width:60px;">
+            <button id="recommend-btn" class="primary-btn">🚀 Get Recommendations</button>
+        </div>
+    </section>
+
+    <section class="results-card hidden">
+        <h2>🏆 Top Recommended Products</h2>
+        <ol id="recommendation-output"></ol>
+    </section>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+
+    const STORAGE_KEY = "recommendation_engine_products";
+    const productListDiv = document.getElementById("product-list");
+    const outputList = document.getElementById("recommendation-output");
+    const resultsCard = document.querySelector(".results-card");
+
+    const defaultProducts = [
+        { name: "Winter Scarf", purchases: 120, rating: 5 },
+        { name: "Summer Hat", purchases: 95, rating: 4 },
+        { name: "Gloves", purchases: 50, rating: 3 }
+    ];
+
+    function saveProductsToStorage(data) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    }
+
+    function loadProductsFromStorage() {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        return saved ? JSON.parse(saved) : defaultProducts;
+    }
+
+    function createStarElement(selectedRating, rowStarsDiv) {
+        rowStarsDiv.innerHTML = "";  
+
+        for (let i = 1; i <= 5; i++) {
+            const s = document.createElement("span");
+            s.className = "star" + (i <= selectedRating ? " active" : "");
+            s.innerHTML = "★";
+
+            s.addEventListener("click", () => {
+                updateStars(rowStarsDiv, i);
+            });
+
+            rowStarsDiv.appendChild(s);
+        }
+    }
+
+    function updateStars(rowStarsDiv, rating) {
+        [...rowStarsDiv.children].forEach((star, index) => {
+            star.classList.toggle("active", index < rating);
+        });
+        rowStarsDiv.setAttribute("data-rating", rating);
+    }
+
+    function createProductRow(name = "", purchases = 1, rating = 1) {
+        const row = document.createElement("div");
+        row.className = "product-input-row";
+
+        row.innerHTML = `
+            <input type="text" placeholder="Product Name" class="product-name" value="${name}">
+            <input type="number" placeholder="Purchases" class="product-purchases" min="1" value="${purchases}">
+            <div class="rating-stars" data-rating="${rating}"></div>
+            <button class="remove-btn" onclick="removeProductRow(this)">X</button>
+        `;
+
+        productListDiv.appendChild(row);
+
+        const starDiv = row.querySelector(".rating-stars");
+        createStarElement(rating, starDiv);
+    }
+
+    window.removeProductRow = (btn) => {
+        if (productListDiv.children.length > 1) {
+            btn.parentElement.remove();
+        } else {
+            alert("⚠ You must keep at least one product.");
+        }
+    };
+
+    function getRecommendationsAPI(data, topN) {
+        const validData = data
+            .filter(item => item.name && item.purchases > 0)
+            .map(item => ({
+                name: item.name.trim(),
+                purchases: parseInt(item.purchases),
+                rating: parseInt(item.rating)
+            }));
+
+        validData.sort((a, b) => {
+            if (b.purchases === a.purchases) {
+                return b.rating - a.rating;
+            }
+            return b.purchases - a.purchases;
+        });
+
+        return validData.slice(0, topN);
+    }
+
+    function initialize() {
+        loadProductsFromStorage().forEach(p =>
+            createProductRow(p.name, p.purchases, p.rating)
+        );
+    }
+
+    initialize();
+
+    document.getElementById("add-product-btn").addEventListener("click", () => {
+        createProductRow("", 1, 1);
+    });
+
+    document.getElementById("recommend-btn").addEventListener("click", () => {
+
+        const rows = [...document.querySelectorAll(".product-input-row")];
+
+        const inputData = rows.map(row => ({
+            name: row.querySelector(".product-name").value,
+            purchases: row.querySelector(".product-purchases").value,
+            rating: row.querySelector(".rating-stars").getAttribute("data-rating")
+        }));
+
+        saveProductsToStorage(inputData);
+
+        const topN = parseInt(document.getElementById("top-n").value);
+        const recs = getRecommendationsAPI(inputData, topN);
+
+        outputList.innerHTML = "";
+        recs.forEach((p, i) => {
+            const li = document.createElement("li");
+            li.innerHTML = `
+                <span>${i + 1}. ${p.name}</span>
+                <span>${p.purchases} purchases • ${"★".repeat(p.rating)}</span>
+            `;
+            outputList.appendChild(li);
+        });
+
+        resultsCard.classList.remove("hidden");
+    });
+
+});
+</script>
+
+</body>
+</html>
